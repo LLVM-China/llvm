@@ -1463,6 +1463,8 @@ void FastISel::fastEmitBranch(MachineBasicBlock *MSucc,
                               const DebugLoc &DbgLoc) {
   if (FuncInfo.MBB->getBasicBlock()->size() > 1 &&
       FuncInfo.MBB->isLayoutSuccessor(MSucc)) {
+    // TODO: Dear Frozen, please show me the patch kindly :)
+    // http://lists.llvm.org/pipermail/llvm-dev/2017-June/113631.html
     // For more accurate line information if this is the only instruction
     // in the block then emit it, otherwise we have the unconditional
     // fall-through case, which needs no instructions.
