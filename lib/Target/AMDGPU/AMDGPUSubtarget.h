@@ -57,9 +57,12 @@ public:
 
   enum {
     ISAVersion0_0_0,
+    ISAVersion6_0_0,
+    ISAVersion6_0_1,
     ISAVersion7_0_0,
     ISAVersion7_0_1,
     ISAVersion7_0_2,
+    ISAVersion7_0_3,
     ISAVersion8_0_0,
     ISAVersion8_0_1,
     ISAVersion8_0_2,
@@ -67,7 +70,9 @@ public:
     ISAVersion8_0_4,
     ISAVersion8_1_0,
     ISAVersion9_0_0,
-    ISAVersion9_0_1
+    ISAVersion9_0_1,
+    ISAVersion9_0_2,
+    ISAVersion9_0_3
   };
 
   enum TrapHandlerAbi {
@@ -144,6 +149,11 @@ protected:
   bool HasScalarStores;
   bool HasInv2PiInlineImm;
   bool HasSDWA;
+  bool HasSDWAOmod;
+  bool HasSDWAScalar;
+  bool HasSDWASdst;
+  bool HasSDWAMac;
+  bool HasSDWAClampVOPC;
   bool HasDPP;
   bool FlatAddressSpace;
   bool FlatInstOffsets;
@@ -424,6 +434,26 @@ public:
 
   bool hasSDWA() const {
     return HasSDWA;
+  }
+
+  bool hasSDWAOmod() const {
+    return HasSDWAOmod;
+  }
+
+  bool hasSDWAScalar() const {
+    return HasSDWAScalar;
+  }
+
+  bool hasSDWASdst() const {
+    return HasSDWASdst;
+  }
+
+  bool hasSDWAMac() const {
+    return HasSDWAMac;
+  }
+
+  bool hasSDWAClampVOPC() const {
+    return HasSDWAClampVOPC;
   }
 
   /// \brief Returns the offset in bytes from the start of the input buffer

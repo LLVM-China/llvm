@@ -78,7 +78,7 @@ class MipsSubtarget : public MipsGenSubtargetInfo {
   // IsNan2008 - IEEE 754-2008 NaN encoding.
   bool IsNaN2008bit;
 
-  // IsFP64bit - General-purpose registers are 64 bits wide
+  // IsGP64bit - General-purpose registers are 64 bits wide
   bool IsGP64bit;
 
   // IsPTR64bit - Pointers are 64 bit wide
@@ -144,7 +144,7 @@ class MipsSubtarget : public MipsGenSubtargetInfo {
 
   // HasEVA -- supports EVA ASE.
   bool HasEVA;
-  
+ 
   // nomadd4 - disables generation of 4-operand madd.s, madd.d and
   // related instructions.
   bool DisableMadd4;

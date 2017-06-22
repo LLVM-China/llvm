@@ -589,6 +589,11 @@ void SelectionDAG::RemoveDeadNodes(SmallVectorImpl<SDNode *> &DeadNodes) {
   // worklist.
   while (!DeadNodes.empty()) {
     SDNode *N = DeadNodes.pop_back_val();
+    // Skip to next node if we've already managed to delete the node. This could
+    // happen if replacing a node causes a node previously added to the node to
+    // be deleted.
+    if (N->getOpcode() == ISD::DELETED_NODE)
+      continue;
 
     for (DAGUpdateListener *DUL = UpdateListeners; DUL; DUL = DUL->Next)
       DUL->NodeDeleted(N, nullptr);
@@ -7237,6 +7242,24 @@ void SelectionDAG::TransferDbgValues(SDValue From, SDValue To) {
   }
   for (SDDbgValue *I : ClonedDVs)
     AddDbgValue(I, ToNode, false);
+}
+
+void SelectionDAG::makeEquivalentMemoryOrdering(LoadSDNode *OldLoad,
+                                                SDValue NewMemOp) {
+  assert(isa<MemSDNode>(NewMemOp.getNode()) && "Expected a memop node");
+  if (!OldLoad->hasAnyUseOfValue(1))
+    return;
+
+  // The new memory operation must have the same position as the old load in
+  // terms of memory dependency. Create a TokenFactor for the old load and new
+  // memory operation and update uses of the old load's output chain to use that
+  // TokenFactor.
+  SDValue OldChain = SDValue(OldLoad, 1);
+  SDValue NewChain = SDValue(NewMemOp.getNode(), 1);
+  SDValue TokenFactor =
+      getNode(ISD::TokenFactor, SDLoc(OldLoad), MVT::Other, OldChain, NewChain);
+  ReplaceAllUsesOfValueWith(OldChain, TokenFactor);
+  UpdateNodeOperands(TokenFactor.getNode(), OldChain, NewChain);
 }
 
 //===----------------------------------------------------------------------===//

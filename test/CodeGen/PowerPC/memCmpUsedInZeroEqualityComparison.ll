@@ -17,13 +17,13 @@ declare signext i32 @memcmp(i8* nocapture, i8* nocapture, i64) local_unnamed_add
 ; Check 4 bytes - requires 1 load for each param.
 define signext i32 @zeroEqualityTest02(i8* %x, i8* %y) {
 ; CHECK-LABEL: zeroEqualityTest02:
-; CHECK:       # BB#0: # %loadbb
+; CHECK:       # BB#0:
 ; CHECK-NEXT:    lwz 3, 0(3)
 ; CHECK-NEXT:    lwz 4, 0(4)
-; CHECK-NEXT:    li 5, 1
-; CHECK-NEXT:    cmplw 3, 4
-; CHECK-NEXT:    isel 3, 0, 5, 2
-; CHECK-NEXT:    clrldi 3, 3, 32
+; CHECK-NEXT:    xor 3, 3, 4
+; CHECK-NEXT:    cntlzw 3, 3
+; CHECK-NEXT:    srwi 3, 3, 5
+; CHECK-NEXT:    xori 3, 3, 1
 ; CHECK-NEXT:    blr
   %call = tail call signext i32 @memcmp(i8* %x, i8* %y, i64 4)
   %not.cmp = icmp ne i32 %call, 0
@@ -166,33 +166,66 @@ define signext i32 @zeroEqualityTest05() {
 }
 
 ; Validate with memcmp()?:
-; Function Attrs: nounwind readonly
-define signext i32 @zeroEqualityTest06() {
-; CHECK-LABEL: zeroEqualityTest06:
-; CHECK:       # BB#0: # %loadbb
-; CHECK-NEXT:    addis 3, 2, .LzeroEqualityTest04.buffer1@toc@ha
-; CHECK-NEXT:    addis 4, 2, .LzeroEqualityTest04.buffer2@toc@ha
-; CHECK-NEXT:    ld 3, .LzeroEqualityTest04.buffer1@toc@l(3)
-; CHECK-NEXT:    ld 4, .LzeroEqualityTest04.buffer2@toc@l(4)
-; CHECK-NEXT:    cmpld 3, 4
-; CHECK-NEXT:    bne 0, .LBB5_2
-; CHECK-NEXT:  # BB#1: # %loadbb1
-; CHECK-NEXT:    addis 3, 2, .LzeroEqualityTest04.buffer1@toc@ha+8
-; CHECK-NEXT:    addis 4, 2, .LzeroEqualityTest04.buffer2@toc@ha+8
-; CHECK-NEXT:    ld 3, .LzeroEqualityTest04.buffer1@toc@l+8(3)
-; CHECK-NEXT:    ld 4, .LzeroEqualityTest04.buffer2@toc@l+8(4)
-; CHECK-NEXT:    cmpld 3, 4
-; CHECK-NEXT:    li 3, 0
-; CHECK-NEXT:    beq 0, .LBB5_3
-; CHECK-NEXT:  .LBB5_2: # %res_block
+define signext i32 @equalityFoldTwoConstants() {
+; CHECK-LABEL: equalityFoldTwoConstants:
+; CHECK:       # BB#0: # %endblock
 ; CHECK-NEXT:    li 3, 1
-; CHECK-NEXT:  .LBB5_3: # %endblock
-; CHECK-NEXT:    cntlzw 3, 3
-; CHECK-NEXT:    srwi 3, 3, 5
 ; CHECK-NEXT:    blr
   %call = tail call signext i32 @memcmp(i8* bitcast ([15 x i32]* @zeroEqualityTest04.buffer1 to i8*), i8* bitcast ([15 x i32]* @zeroEqualityTest04.buffer2 to i8*), i64 16)
   %not.tobool = icmp eq i32 %call, 0
   %cond = zext i1 %not.tobool to i32
   ret i32 %cond
+}
+
+define signext i32 @equalityFoldOneConstant(i8* %X) {
+; CHECK-LABEL: equalityFoldOneConstant:
+; CHECK:       # BB#0: # %loadbb
+; CHECK-NEXT:    li 4, 1
+; CHECK-NEXT:    ld 5, 0(3)
+; CHECK-NEXT:    sldi 4, 4, 32
+; CHECK-NEXT:    cmpld 5, 4
+; CHECK-NEXT:    bne 0, .LBB6_2
+; CHECK-NEXT:  # BB#1: # %loadbb1
+; CHECK-NEXT:    li 4, 3
+; CHECK-NEXT:    ld 3, 8(3)
+; CHECK-NEXT:    sldi 4, 4, 32
+; CHECK-NEXT:    ori 4, 4, 2
+; CHECK-NEXT:    cmpld 3, 4
+; CHECK-NEXT:    li 3, 0
+; CHECK-NEXT:    beq 0, .LBB6_3
+; CHECK-NEXT:  .LBB6_2: # %res_block
+; CHECK-NEXT:    li 3, 1
+; CHECK-NEXT:  .LBB6_3: # %endblock
+; CHECK-NEXT:    cntlzw 3, 3
+; CHECK-NEXT:    srwi 3, 3, 5
+; CHECK-NEXT:    blr
+  %call = tail call signext i32 @memcmp(i8* bitcast ([15 x i32]* @zeroEqualityTest04.buffer1 to i8*), i8* %X, i64 16)
+  %not.tobool = icmp eq i32 %call, 0
+  %cond = zext i1 %not.tobool to i32
+  ret i32 %cond
+}
+
+define i1 @length2_eq_nobuiltin_attr(i8* %X, i8* %Y) {
+; CHECK-LABEL: length2_eq_nobuiltin_attr:
+; CHECK:       # BB#0:
+; CHECK-NEXT:    mflr 0
+; CHECK-NEXT:    std 0, 16(1)
+; CHECK-NEXT:    stdu 1, -32(1)
+; CHECK-NEXT:  .Lcfi0:
+; CHECK-NEXT:    .cfi_def_cfa_offset 32
+; CHECK-NEXT:  .Lcfi1:
+; CHECK-NEXT:    .cfi_offset lr, 16
+; CHECK-NEXT:    li 5, 2
+; CHECK-NEXT:    bl memcmp
+; CHECK-NEXT:    nop
+; CHECK-NEXT:    cntlzw 3, 3
+; CHECK-NEXT:    rlwinm 3, 3, 27, 31, 31
+; CHECK-NEXT:    addi 1, 1, 32
+; CHECK-NEXT:    ld 0, 16(1)
+; CHECK-NEXT:    mtlr 0
+; CHECK-NEXT:    blr
+  %m = tail call signext i32 @memcmp(i8* %X, i8* %Y, i64 2) nobuiltin
+  %c = icmp eq i32 %m, 0
+  ret i1 %c
 }
 

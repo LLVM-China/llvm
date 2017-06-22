@@ -1135,7 +1135,8 @@ static void DumpInfoPlistSectionContents(StringRef Filename,
     DataRefImpl Ref = Section.getRawDataRefImpl();
     StringRef SegName = O->getSectionFinalSegmentName(Ref);
     if (SegName == "__TEXT" && SectName == "__info_plist") {
-      outs() << "Contents of (" << SegName << "," << SectName << ") section\n";
+      if (!NoLeadingHeaders)
+        outs() << "Contents of (" << SegName << "," << SectName << ") section\n";
       StringRef BytesStr;
       Section.getContents(BytesStr);
       const char *sect = reinterpret_cast<const char *>(BytesStr.data());
@@ -4572,6 +4573,12 @@ static void print_class64_t(uint64_t p, struct DisassembleInfo *info) {
                        n_value, c.superclass);
   if (name != nullptr)
     outs() << " " << name;
+  else {
+    name = get_dyld_bind_info_symbolname(S.getAddress() +
+             offset + offsetof(struct class64_t, superclass), info);
+    if (name != nullptr)
+      outs() << " " << name;
+  }
   outs() << "\n";
 
   outs() << "         cache " << format("0x%" PRIx64, c.cache);
@@ -7634,6 +7641,10 @@ static void PrintMachHeader(uint32_t magic, uint32_t cputype,
       outs() << " APP_EXTENSION_SAFE";
       f &= ~MachO::MH_APP_EXTENSION_SAFE;
     }
+    if (f & MachO::MH_NLIST_OUTOFSYNC_WITH_DYLDINFO) {
+      outs() << " NLIST_OUTOFSYNC_WITH_DYLDINFO";
+      f &= ~MachO::MH_NLIST_OUTOFSYNC_WITH_DYLDINFO;
+    }
     if (f != 0 || flags == 0)
       outs() << format(" 0x%08" PRIx32, f);
   } else {
@@ -9336,6 +9347,22 @@ void llvm::printMachOLoadCommands(const object::ObjectFile *Obj) {
 //===----------------------------------------------------------------------===//
 
 void llvm::printMachOExportsTrie(const object::MachOObjectFile *Obj) {
+  uint64_t BaseSegmentAddress = 0;
+  for (const auto &Command : Obj->load_commands()) {
+    if (Command.C.cmd == MachO::LC_SEGMENT) {
+      MachO::segment_command Seg = Obj->getSegmentLoadCommand(Command);
+      if (Seg.fileoff == 0 && Seg.filesize != 0) {
+        BaseSegmentAddress = Seg.vmaddr;
+        break;
+      }
+    } else if (Command.C.cmd == MachO::LC_SEGMENT_64) {
+      MachO::segment_command_64 Seg = Obj->getSegment64LoadCommand(Command);
+      if (Seg.fileoff == 0 && Seg.filesize != 0) {
+        BaseSegmentAddress = Seg.vmaddr;
+        break;
+      }
+    }
+  }
   for (const llvm::object::ExportEntry &Entry : Obj->exports()) {
     uint64_t Flags = Entry.flags();
     bool ReExport = (Flags & MachO::EXPORT_SYMBOL_FLAGS_REEXPORT);
@@ -9349,7 +9376,7 @@ void llvm::printMachOExportsTrie(const object::MachOObjectFile *Obj) {
       outs() << "[re-export] ";
     else
       outs() << format("0x%08llX  ",
-                       Entry.address()); // FIXME:add in base address
+                       Entry.address() + BaseSegmentAddress);
     outs() << Entry.name();
     if (WeakDef || ThreadLocal || Resolver || Abs) {
       bool NeedsComma = false;

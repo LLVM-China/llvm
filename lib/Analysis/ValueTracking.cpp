@@ -852,7 +852,8 @@ static void computeKnownBitsFromShiftOperator(
   Optional<bool> ShifterOperandIsNonZero;
 
   // Early exit if we can't constrain any well-defined shift amount.
-  if (!(ShiftAmtKZ & (BitWidth - 1)) && !(ShiftAmtKO & (BitWidth - 1))) {
+  if (!(ShiftAmtKZ & (PowerOf2Ceil(BitWidth) - 1)) &&
+      !(ShiftAmtKO & (PowerOf2Ceil(BitWidth) - 1))) {
     ShifterOperandIsNonZero =
         isKnownNonZero(I->getOperand(1), Depth + 1, Q);
     if (!*ShifterOperandIsNonZero)
@@ -3026,7 +3027,7 @@ bool llvm::getConstantDataArrayInfo(const Value *V,
   if (GV->getInitializer()->isNullValue()) {
     Type *GVTy = GV->getValueType();
     if ( (ArrayTy = dyn_cast<ArrayType>(GVTy)) ) {
-      // A zeroinitializer for the array; There is no ConstantDataArray.
+      // A zeroinitializer for the array; there is no ConstantDataArray.
       Array = nullptr;
     } else {
       const DataLayout &DL = GV->getParent()->getDataLayout();
@@ -3078,7 +3079,7 @@ bool llvm::getConstantStringInfo(const Value *V, StringRef &Str,
       Str = StringRef("", 1);
       return true;
     }
-    // We cannot instantiate a StringRef as we do not have an apropriate string
+    // We cannot instantiate a StringRef as we do not have an appropriate string
     // of 0s at hand.
     return false;
   }

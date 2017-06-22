@@ -37,7 +37,8 @@
 
 namespace llvm {
 
-class BitcodeModule;
+struct BitcodeFileContents;
+class StringTableBuilder;
 
 namespace irsymtab {
 
@@ -136,9 +137,10 @@ struct Header {
 
 } // end namespace storage
 
-/// Fills in Symtab and Strtab with a valid symbol and string table for Mods.
+/// Fills in Symtab and StrtabBuilder with a valid symbol and string table for
+/// Mods.
 Error build(ArrayRef<Module *> Mods, SmallVector<char, 0> &Symtab,
-            SmallVector<char, 0> &Strtab);
+            StringTableBuilder &StrtabBuilder, BumpPtrAllocator &Alloc);
 
 /// This represents a symbol that has been read from a storage::Symbol and
 /// possibly a storage::Uncommon.
@@ -325,7 +327,7 @@ struct FileContents {
 };
 
 /// Reads the contents of a bitcode file, creating its irsymtab if necessary.
-Expected<FileContents> readBitcode(ArrayRef<BitcodeModule> Mods);
+Expected<FileContents> readBitcode(const BitcodeFileContents &BFC);
 
 } // end namespace irsymtab
 } // end namespace llvm

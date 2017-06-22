@@ -46,15 +46,15 @@ namespace {
 /// Stores the temporary state that is required to build an IR symbol table.
 struct Builder {
   SmallVector<char, 0> &Symtab;
-  SmallVector<char, 0> &Strtab;
+  StringTableBuilder &StrtabBuilder;
+  StringSaver Saver;
 
-  Builder(SmallVector<char, 0> &Symtab, SmallVector<char, 0> &Strtab)
-      : Symtab(Symtab), Strtab(Strtab) {}
-
-  StringTableBuilder StrtabBuilder{StringTableBuilder::RAW};
-
-  BumpPtrAllocator Alloc;
-  StringSaver Saver{Alloc};
+  // This ctor initializes a StringSaver using the passed in BumpPtrAllocator.
+  // The StringTableBuilder does not create a copy of any strings added to it,
+  // so this provides somewhere to store any strings that we create.
+  Builder(SmallVector<char, 0> &Symtab, StringTableBuilder &StrtabBuilder,
+          BumpPtrAllocator &Alloc)
+      : Symtab(Symtab), StrtabBuilder(StrtabBuilder), Saver(Alloc) {}
 
   DenseMap<const Comdat *, unsigned> ComdatMap;
   Mangler Mang;
@@ -90,6 +90,10 @@ struct Builder {
 };
 
 Error Builder::addModule(Module *M) {
+  if (M->getDataLayoutStr().empty())
+    return make_error<StringError>("input module has no datalayout",
+                                   inconvertibleErrorCode());
+
   SmallPtrSet<GlobalValue *, 8> Used;
   collectUsedGlobalVariables(*M, Used, /*CompilerUsed*/ false);
 
@@ -105,9 +109,9 @@ Error Builder::addModule(Module *M) {
   if (TT.isOSBinFormatCOFF()) {
     if (auto E = M->materializeMetadata())
       return E;
-    if (Metadata *Val = M->getModuleFlag("Linker Options")) {
-      MDNode *LinkerOptions = cast<MDNode>(Val);
-      for (const MDOperand &MDOptions : LinkerOptions->operands())
+    if (NamedMDNode *LinkerOptions =
+            M->getNamedMetadata("llvm.linker.options")) {
+      for (MDNode *MDOptions : LinkerOptions->operands())
         for (const MDOperand &MDOption : cast<MDNode>(MDOptions)->operands())
           COFFLinkerOptsOS << " " << cast<MDString>(MDOption)->getString();
     }
@@ -236,7 +240,7 @@ Error Builder::build(ArrayRef<Module *> IRMods) {
       return Err;
 
   COFFLinkerOptsOS.flush();
-  setStr(Hdr.COFFLinkerOpts, COFFLinkerOpts);
+  setStr(Hdr.COFFLinkerOpts, Saver.save(COFFLinkerOpts));
 
   // We are about to fill in the header's range fields, so reserve space for it
   // and copy it in afterwards.
@@ -247,26 +251,21 @@ Error Builder::build(ArrayRef<Module *> IRMods) {
   writeRange(Hdr.Uncommons, Uncommons);
 
   *reinterpret_cast<storage::Header *>(Symtab.data()) = Hdr;
-
-  raw_svector_ostream OS(Strtab);
-  StrtabBuilder.finalizeInOrder();
-  StrtabBuilder.write(OS);
-
   return Error::success();
 }
 
 } // end anonymous namespace
 
 Error irsymtab::build(ArrayRef<Module *> Mods, SmallVector<char, 0> &Symtab,
-                      SmallVector<char, 0> &Strtab) {
-  return Builder(Symtab, Strtab).build(Mods);
+                      StringTableBuilder &StrtabBuilder,
+                      BumpPtrAllocator &Alloc) {
+  return Builder(Symtab, StrtabBuilder, Alloc).build(Mods);
 }
 
-Expected<FileContents> irsymtab::readBitcode(ArrayRef<BitcodeModule> BMs) {
+// Upgrade a vector of bitcode modules created by an old version of LLVM by
+// creating an irsymtab for them in the current format.
+static Expected<FileContents> upgrade(ArrayRef<BitcodeModule> BMs) {
   FileContents FC;
-  if (BMs.empty())
-    return make_error<StringError>("Bitcode file does not contain any modules",
-                                   inconvertibleErrorCode());
 
   LLVMContext Ctx;
   std::vector<Module *> Mods;
@@ -278,18 +277,30 @@ Expected<FileContents> irsymtab::readBitcode(ArrayRef<BitcodeModule> BMs) {
     if (!MOrErr)
       return MOrErr.takeError();
 
-    if ((*MOrErr)->getDataLayoutStr().empty())
-      return make_error<StringError>("input module has no datalayout",
-                                     inconvertibleErrorCode());
-
     Mods.push_back(MOrErr->get());
     OwnedMods.push_back(std::move(*MOrErr));
   }
 
-  if (Error E = build(Mods, FC.Symtab, FC.Strtab))
+  StringTableBuilder StrtabBuilder(StringTableBuilder::RAW);
+  BumpPtrAllocator Alloc;
+  if (Error E = build(Mods, FC.Symtab, StrtabBuilder, Alloc))
     return std::move(E);
+
+  StrtabBuilder.finalizeInOrder();
+  FC.Strtab.resize(StrtabBuilder.getSize());
+  StrtabBuilder.write((uint8_t *)FC.Strtab.data());
 
   FC.TheReader = {{FC.Symtab.data(), FC.Symtab.size()},
                   {FC.Strtab.data(), FC.Strtab.size()}};
   return std::move(FC);
+}
+
+Expected<FileContents> irsymtab::readBitcode(const BitcodeFileContents &BFC) {
+  if (BFC.Mods.empty())
+    return make_error<StringError>("Bitcode file does not contain any modules",
+                                   inconvertibleErrorCode());
+
+  // Right now we have no on-disk representation of symbol tables, so we always
+  // upgrade.
+  return upgrade(BFC.Mods);
 }
