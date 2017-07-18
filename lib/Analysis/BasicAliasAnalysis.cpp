@@ -1006,7 +1006,7 @@ static AliasResult aliasSameBasePointerGEPs(const GEPOperator *GEP1,
     // Because they cannot partially overlap and because fields in an array
     // cannot overlap, if we can prove the final indices are different between
     // GEP1 and GEP2, we can conclude GEP1 and GEP2 don't alias.
-    
+
     // If the last indices are constants, we've already checked they don't
     // equal each other so we can exit early.
     if (C1 && C2)
@@ -1021,11 +1021,14 @@ static AliasResult aliasSameBasePointerGEPs(const GEPOperator *GEP1,
         // asking about values from different loop iterations. See PR32314.
         // TODO: We may be able to change the check so we only do this when
         // we definitely looked through a PHINode.
-        KnownBits Known1 = computeKnownBits(GEP1LastIdx, DL);
-        KnownBits Known2 = computeKnownBits(GEP2LastIdx, DL);
-        if (Known1.Zero.intersects(Known2.One) ||
-            Known1.One.intersects(Known2.Zero))
-          return NoAlias;
+        if (GEP1LastIdx != GEP2LastIdx &&
+            GEP1LastIdx->getType() == GEP2LastIdx->getType()) {
+          KnownBits Known1 = computeKnownBits(GEP1LastIdx, DL);
+          KnownBits Known2 = computeKnownBits(GEP2LastIdx, DL);
+          if (Known1.Zero.intersects(Known2.One) ||
+              Known1.One.intersects(Known2.Zero))
+            return NoAlias;
+        }
       } else if (isKnownNonEqual(GEP1LastIdx, GEP2LastIdx, DL))
         return NoAlias;
     }

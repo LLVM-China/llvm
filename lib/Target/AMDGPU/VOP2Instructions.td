@@ -117,7 +117,10 @@ class VOP2_SDWA_Pseudo <string OpName, VOPProfile P, list<dag> pattern=[]> :
 class getVOP2Pat64 <SDPatternOperator node, VOPProfile P> : LetDummies {
   list<dag> ret = !if(P.HasModifiers,
     [(set P.DstVT:$vdst,
-      (node (P.Src0VT (VOP3Mods0 P.Src0VT:$src0, i32:$src0_modifiers, i1:$clamp, i32:$omod)),
+      (node (P.Src0VT
+              !if(P.HasOMod,
+                  (VOP3Mods0 P.Src0VT:$src0, i32:$src0_modifiers, i1:$clamp, i32:$omod),
+                  (VOP3Mods0 P.Src0VT:$src0, i32:$src0_modifiers, i1:$clamp))),
             (P.Src1VT (VOP3Mods P.Src1VT:$src1, i32:$src1_modifiers))))],
     [(set P.DstVT:$vdst, (node P.Src0VT:$src0, P.Src1VT:$src1))]);
 }
@@ -307,6 +310,8 @@ def VOP_READLANE : VOPProfile<[i32, i32, i32]> {
   let Ins64 = Ins32;
   let Asm32 = " $vdst, $src0, $src1";
   let Asm64 = Asm32;
+  let HasExt = 0;
+  let HasSDWA9 = 0;
 }
 
 def VOP_WRITELANE : VOPProfile<[i32, i32, i32]> {
@@ -316,6 +321,8 @@ def VOP_WRITELANE : VOPProfile<[i32, i32, i32]> {
   let Ins64 = Ins32;
   let Asm32 = " $vdst, $src0, $src1";
   let Asm64 = Asm32;
+  let HasExt = 0;
+  let HasSDWA9 = 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -378,17 +385,17 @@ def V_READLANE_B32 : VOP2_Pseudo<"v_readlane_b32", VOP_READLANE,
 def V_WRITELANE_B32 : VOP2_Pseudo<"v_writelane_b32", VOP_WRITELANE, [], "">;
 } // End isConvergent = 1
 
-defm V_BFM_B32 : VOP2Inst <"v_bfm_b32", VOP_I32_I32_I32>;
-defm V_BCNT_U32_B32 : VOP2Inst <"v_bcnt_u32_b32", VOP_I32_I32_I32>;
-defm V_MBCNT_LO_U32_B32 : VOP2Inst <"v_mbcnt_lo_u32_b32", VOP_I32_I32_I32, int_amdgcn_mbcnt_lo>;
-defm V_MBCNT_HI_U32_B32 : VOP2Inst <"v_mbcnt_hi_u32_b32", VOP_I32_I32_I32, int_amdgcn_mbcnt_hi>;
-defm V_LDEXP_F32 : VOP2Inst <"v_ldexp_f32", VOP_F32_F32_I32, AMDGPUldexp>;
-defm V_CVT_PKACCUM_U8_F32 : VOP2Inst <"v_cvt_pkaccum_u8_f32", VOP_I32_F32_I32>; // TODO: set "Uses = dst"
-defm V_CVT_PKNORM_I16_F32 : VOP2Inst <"v_cvt_pknorm_i16_f32", VOP_I32_F32_F32>;
-defm V_CVT_PKNORM_U16_F32 : VOP2Inst <"v_cvt_pknorm_u16_f32", VOP_I32_F32_F32>;
-defm V_CVT_PKRTZ_F16_F32 : VOP2Inst <"v_cvt_pkrtz_f16_f32", VOP_I32_F32_F32, AMDGPUpkrtz_f16_f32>;
-defm V_CVT_PK_U16_U32 : VOP2Inst <"v_cvt_pk_u16_u32", VOP_I32_I32_I32>;
-defm V_CVT_PK_I16_I32 : VOP2Inst <"v_cvt_pk_i16_i32", VOP_I32_I32_I32>;
+defm V_BFM_B32 : VOP2Inst <"v_bfm_b32", VOP_NO_EXT<VOP_I32_I32_I32>>;
+defm V_BCNT_U32_B32 : VOP2Inst <"v_bcnt_u32_b32", VOP_NO_EXT<VOP_I32_I32_I32>>;
+defm V_MBCNT_LO_U32_B32 : VOP2Inst <"v_mbcnt_lo_u32_b32", VOP_NO_EXT<VOP_I32_I32_I32>, int_amdgcn_mbcnt_lo>;
+defm V_MBCNT_HI_U32_B32 : VOP2Inst <"v_mbcnt_hi_u32_b32", VOP_NO_EXT<VOP_I32_I32_I32>, int_amdgcn_mbcnt_hi>;
+defm V_LDEXP_F32 : VOP2Inst <"v_ldexp_f32", VOP_NO_EXT<VOP_F32_F32_I32>, AMDGPUldexp>;
+defm V_CVT_PKACCUM_U8_F32 : VOP2Inst <"v_cvt_pkaccum_u8_f32", VOP_NO_EXT<VOP_I32_F32_I32>>; // TODO: set "Uses = dst"
+defm V_CVT_PKNORM_I16_F32 : VOP2Inst <"v_cvt_pknorm_i16_f32", VOP_NO_EXT<VOP_I32_F32_F32>>;
+defm V_CVT_PKNORM_U16_F32 : VOP2Inst <"v_cvt_pknorm_u16_f32", VOP_NO_EXT<VOP_I32_F32_F32>>;
+defm V_CVT_PKRTZ_F16_F32 : VOP2Inst <"v_cvt_pkrtz_f16_f32", VOP_NO_EXT<VOP_I32_F32_F32>, AMDGPUpkrtz_f16_f32>;
+defm V_CVT_PK_U16_U32 : VOP2Inst <"v_cvt_pk_u16_u32", VOP_NO_EXT<VOP_I32_I32_I32>>;
+defm V_CVT_PK_I16_I32 : VOP2Inst <"v_cvt_pk_i16_i32", VOP_NO_EXT<VOP_I32_I32_I32>>;
 
 } // End SubtargetPredicate = isGCN
 
@@ -809,9 +816,11 @@ let SubtargetPredicate = isVI in {
 
 // Aliases to simplify matching of floating-point instructions that
 // are VOP2 on SI and VOP3 on VI.
-class SI2_VI3Alias <string name, Instruction inst> : InstAlias <
+class SI2_VI3Alias <string name, VOP3_Real inst> : InstAlias <
   name#" $dst, $src0, $src1",
-  (inst VGPR_32:$dst, 0, VCSrc_f32:$src0, 0, VCSrc_f32:$src1, 0, 0)
+  !if(inst.Pfl.HasOMod,
+      (inst VGPR_32:$dst, 0, VCSrc_f32:$src0, 0, VCSrc_f32:$src1, 0, 0),
+      (inst VGPR_32:$dst, 0, VCSrc_f32:$src0, 0, VCSrc_f32:$src1, 0))
 >, PredicateControl {
   let UseInstAsmMatchConverter = 0;
   let AsmVariantName = AMDGPUAsmVariants.VOP3;
